@@ -3,9 +3,10 @@ from sentence_transformers import SentenceTransformer
 from pinecone import Pinecone, ServerlessSpec
 from transformers import pipeline
 import streamlit as st
+import time
 
-
-api_key = 'bbc1194c-5098-46cc-8a8d-3ec6cec845eb'  # Replace this your Pinecone API key
+# Replace this with your actual Pinecone API key
+api_key = 'bbc1194c-5098-46cc-8a8d-3ec6cec845eb'  # Make sure this is the correct key
 pc = Pinecone(api_key=api_key)
 
 def extract_text_from_pdf(pdf_path):
@@ -35,11 +36,24 @@ def store_embeddings(embeddings, index_name='pdf-embeddings', batch_size=100):
             )
         )
     index = pc.Index(index_name)
+    
     # Batch the vectors to avoid payload size errors
     for i in range(0, len(embeddings), batch_size):
         batch = embeddings[i:i + batch_size]
         vectors = [(str(i + j), embedding.tolist()) for j, embedding in enumerate(batch)]
-        index.upsert(vectors)
+        
+        retries = 3
+        while retries > 0:
+            try:
+                index.upsert(vectors)
+                break
+            except Exception as e:
+                st.write(f"Error upserting vectors: {e}")
+                retries -= 1
+                time.sleep(5)
+                if retries == 0:
+                    st.write(f"Failed to upsert vectors after multiple attempts: {e}")
+                    raise
 
 def query_vector_store(query, model_name='all-MiniLM-L6-v2', index_name='pdf-embeddings'):
     model = SentenceTransformer(model_name)
